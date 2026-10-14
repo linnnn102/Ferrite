@@ -1,19 +1,21 @@
 #![no_std]
 #![no_main]
 
+mod vga;
+
 use core::panic::PanicInfo;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.entry")]
 pub extern "C" fn kmain() -> ! {
-    let vga = 0xb8000 as *mut u8;
-    for (i, &b) in b"Hello from Rust!".iter().enumerate() {
-        unsafe {
-            vga.add(i * 2).write_volatile(b);        // character
-            vga.add(i * 2 + 1).write_volatile(0x0f); // white on black
-        }
+    vga::clear_screen();
+    vga::print_at(0, 0, b"Hello from Rust!", 0x0f);
+    vga::print_at(1, 0, b"Ferrite kernel", 0x1e);
+    loop {
+        // SAFETY: `hlt` only pauses the CPU until the next interrupt arrives;
+        // it doesn't touch memory or registers.
+        unsafe { core::arch::asm!("hlt") }
     }
-    loop { unsafe { core::arch::asm!("hlt") } }
 }
 
 #[panic_handler]
