@@ -6,25 +6,12 @@ const HEIGHT: usize = 25;
 
 const CRTC_INDEX: Port = Port::new(0x3d4);
 const CRTC_DATA: Port = Port::new(0x3d5);
+const BLANK_ATTR: u8 = color_code(Color::White, Color::Black);
 
 /// Fills the whole screen with spaces, white on black.
 pub fn clear_screen() {
-    for y in 0..HEIGHT {
-        print_at(y, 0, &[b' '; WIDTH], 0x0f);
-    }
-}
-
-/// Writes `text` starting at row `y`, column `x`.
-/// Text that runs past the end of the row is cut off.
-pub fn print_at(y: usize, x: usize, text: &[u8], attr: u8) {
-    if y >= HEIGHT {
-        return;
-    }
-    for (i, &ch) in text.iter().enumerate() {
-        if x + i >= WIDTH {
-            break;
-        }
-        write_cell(y * WIDTH + x + i, ch, attr);
+    for cell in 0..WIDTH * HEIGHT {
+        write_cell(cell, b' ', BLANK_ATTR);
     }
 }
 
@@ -39,6 +26,22 @@ fn write_cell(cell: usize, ch: u8, attr: u8) {
     unsafe {
         VGA_BUFFER.add(cell * 2).write_volatile(ch);
         VGA_BUFFER.add(cell * 2 + 1).write_volatile(attr);
+    }
+}
+
+/// Reads the character and color stored in cell number `cell`.
+/// Returns a blank white-on-black cell if `cell` is outside the screen.
+fn read_cell(cell: usize) -> (u8, u8) {
+    if cell >= WIDTH * HEIGHT {
+        return (b' ', 0x0f);
+    }
+    // SAFETY: cell < WIDTH * HEIGHT (checked above), so both reads stay inside
+    // the 4000-byte VGA text buffer at 0xb8000, which the bootloader identity-maps.
+    unsafe {
+        (
+            VGA_BUFFER.add(cell * 2).read_volatile(),
+            VGA_BUFFER.add(cell * 2 + 1).read_volatile(),
+        )
     }
 }
 
@@ -60,7 +63,7 @@ pub fn set_cursor(y: usize, x: usize) {
 }
 
 /// Returns the hardware cursor's position as `(row, column)`.
-#[allow(dead_code)] // not used yet; the Writer in step 3c will need it
+#[allow(dead_code)] // not used yet; step 3d will need it
 pub fn get_cursor() -> (usize, usize) {
     // SAFETY: 0x3D4/0x3D5 are the VGA CRTC ports; selecting registers 0x0E/0x0F
     // and reading them back only reports the cursor position.
@@ -72,4 +75,110 @@ pub fn get_cursor() -> (usize, usize) {
         (high << 8) | low
     } as usize;
     (cell / WIDTH, cell % WIDTH)
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum Color {
+    Black = 0,
+    Blue = 1,
+    Green = 2,
+    Cyan = 3,
+    Red = 4,
+    Magenta = 5,
+    Brown = 6,
+    LightGray = 7,
+    DarkGray = 8,
+    LightBlue = 9,
+    LightGreen = 10,
+    LightCyan = 11,
+    LightRed = 12,
+    Pink = 13,
+    Yellow = 14,
+    White = 15,
+}
+
+/// Combines a foreground and background color into a VGA attribute byte.
+const fn color_code(fg: Color, bg: Color) -> u8 {
+    ((bg as u8) << 4) | (fg as u8)
+}
+
+pub struct Writer {
+    row: usize,
+    col: usize,
+    attr: u8,
+}
+
+impl Writer {
+    /// Creates a writer at the top-left corner with the given colors.
+    pub fn new(fg: Color, bg: Color) -> Self {
+        Self {
+            row: 0,
+            col: 0,
+            attr: color_code(fg, bg),
+        }
+    }
+
+    /// Changes the color used for text written after this call.
+    pub fn set_color(&mut self, fg: Color, bg: Color) {
+        self.attr = color_code(fg, bg);
+    }
+
+    /// Writes one byte at the current position and moves forward.
+    /// `\n` starts a new line; other unprintable bytes are shown as a block.
+    pub fn write_byte(&mut self, byte: u8) {
+        if byte == b'\n' {
+            self.new_line();
+            return;
+        }
+        // Printable ASCII is shown as-is; anything else as a block character.
+        let ch = match byte {
+            0x20..=0x7e => byte,
+            _ => 0xfe,
+        };
+        write_cell(self.row * WIDTH + self.col, ch, self.attr);
+        self.col += 1;
+        if self.col >= WIDTH {
+            self.new_line();
+        }
+    }
+
+    /// Writes every byte in `bytes`, then moves the hardware cursor.
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_byte(byte);
+        }
+        set_cursor(self.row, self.col);
+    }
+
+    /// Moves to the start of the next line, scrolling if already on the last line.
+    fn new_line(&mut self) {
+        self.col = 0;
+        if self.row + 1 >= HEIGHT {
+            self.scroll();
+        } else {
+            self.row += 1;
+        }
+    }
+
+    /// Moves every row up by one and clears the bottom row.
+    fn scroll(&mut self) {
+        for row in 0..HEIGHT - 1 {
+            for col in 0..WIDTH {
+                let cell = row * WIDTH + col;
+                let next_cell = (row + 1) * WIDTH + col;
+                let (ch, attr) = read_cell(next_cell);
+                write_cell(cell, ch, attr);
+            }
+        }
+        self.clear_row(HEIGHT - 1);
+    }
+
+    /// Fills `row` with spaces in the current color.
+    fn clear_row(&mut self, row: usize) {
+        for col in 0..WIDTH {
+            write_cell(row * WIDTH + col, b' ', BLANK_ATTR);
+        }
+    }
 }
