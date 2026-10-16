@@ -9,6 +9,7 @@ const CRTC_DATA: Port = Port::new(0x3d5);
 const BLANK_ATTR: u8 = color_code(Color::White, Color::Black);
 
 /// Fills the whole screen with spaces, white on black.
+#[allow(dead_code)] // will be used by the shell's `clear` command later 
 pub fn clear_screen() {
     for cell in 0..WIDTH * HEIGHT {
         write_cell(cell, b' ', BLANK_ATTR);
@@ -63,7 +64,6 @@ pub fn set_cursor(y: usize, x: usize) {
 }
 
 /// Returns the hardware cursor's position as `(row, column)`.
-#[allow(dead_code)] // not used yet; step 3d will need it
 pub fn get_cursor() -> (usize, usize) {
     // SAFETY: 0x3D4/0x3D5 are the VGA CRTC ports; selecting registers 0x0E/0x0F
     // and reading them back only reports the cursor position.
@@ -112,6 +112,7 @@ pub struct Writer {
 
 impl Writer {
     /// Creates a writer at the top-left corner with the given colors.
+    #[allow(dead_code)] // useful for writing at a fixed screen position
     pub fn new(fg: Color, bg: Color) -> Self {
         Self {
             row: 0,
@@ -180,5 +181,25 @@ impl Writer {
         for col in 0..WIDTH {
             write_cell(row * WIDTH + col, b' ', BLANK_ATTR);
         }
+    }
+
+    /// Creates a writer at the current hardware cursor position with the given colors.
+    pub fn at_cursor(fg: Color, bg: Color) -> Self {
+        let (row, col) = get_cursor();
+        let mut w = Self {
+            row,
+            col,
+            attr: color_code(fg, bg),
+        };
+        if w.row >= HEIGHT {
+            w.row = HEIGHT - 1;
+        }
+        if w.col >= WIDTH {
+            w.col = WIDTH - 1;
+        }
+        if w.col != 0 {
+            w.new_line();
+        }
+        w
     }
 }
