@@ -203,3 +203,10 @@ impl Writer {
         w
     }
 }
+
+impl core::fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write_bytes(s.as_bytes());
+        Ok(())
+    }
+}
