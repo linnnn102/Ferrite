@@ -1,4 +1,5 @@
 use crate::port::Port;
+use crate::spinlock::Spinlock;
 
 const VGA_BUFFER: *mut u8 = 0xb8000 as *mut u8;
 const WIDTH: usize = 80;
@@ -7,6 +8,9 @@ const HEIGHT: usize = 25;
 const CRTC_INDEX: Port = Port::new(0x3d4);
 const CRTC_DATA: Port = Port::new(0x3d5);
 const BLANK_ATTR: u8 = color_code(Color::White, Color::Black);
+
+/// The global screen writer used by `print!` and `println!`.
+pub static WRITER: Spinlock<Writer> = Spinlock::new(Writer::new(Color::White, Color::Black));
 
 /// Fills the whole screen with spaces, white on black.
 #[allow(dead_code)] // will be used by the shell's `clear` command later 
@@ -112,8 +116,7 @@ pub struct Writer {
 
 impl Writer {
     /// Creates a writer at the top-left corner with the given colors.
-    #[allow(dead_code)] // useful for writing at a fixed screen position
-    pub fn new(fg: Color, bg: Color) -> Self {
+    pub const fn new(fg: Color, bg: Color) -> Self {
         Self {
             row: 0,
             col: 0,
@@ -209,4 +212,22 @@ impl core::fmt::Write for Writer {
         self.write_bytes(s.as_bytes());
         Ok(())
     }
+}
+
+/// Prints formatted text to the screen. Used by `print!`/`println!`; call those instead.
+#[doc(hidden)]
+pub fn _print(args: core::fmt::Arguments) {
+    use core::fmt::Write;
+    WRITER.lock().write_fmt(args).unwrap();
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::vga::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }

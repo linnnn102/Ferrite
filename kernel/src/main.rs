@@ -2,22 +2,20 @@
 #![no_main]
 
 mod port;
+mod spinlock;
 mod vga;
 
-use core::fmt::Write;
 use core::panic::PanicInfo;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.entry")]
 pub extern "C" fn kmain() -> ! {
-    let mut w = vga::Writer::at_cursor(vga::Color::White, vga::Color::Black);
+    *vga::WRITER.lock() = vga::Writer::at_cursor(vga::Color::White, vga::Color::Black);
     let (row, col) = vga::get_cursor();
-    w.write_bytes(b"Ferrite kernel v0.1\n");
-
-    ok(&mut w, "VGA text driver");
-    ok(&mut w, "Hardware cursor");
-
-    writeln!(w, "Kernel output starts at row {}, col {}", row, col).unwrap();
+    println!("Ferrite kernel v0.1");
+    println!("Kernel output starts at row {}, col {}", row, col);
+    ok("VGA text driver");
+    ok("Hardware cursor");
 
     loop {
         // SAFETY: `hlt` only pauses the CPU until the next interrupt arrives;
@@ -26,7 +24,9 @@ pub extern "C" fn kmain() -> ! {
     }
 }
 
-fn ok(w: &mut vga::Writer, msg: &str) {
+/// Prints a boot status line: a green "[ OK ]" tag followed by `msg`.
+fn ok(msg: &str) {
+    let mut w = vga::WRITER.lock();
     w.set_color(vga::Color::LightGreen, vga::Color::Black);
     w.write_bytes(b"[ OK ] ");
     w.set_color(vga::Color::LightGray, vga::Color::Black);
