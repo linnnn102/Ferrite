@@ -39,11 +39,11 @@ $(BUILD)/os.img: $(BUILD)/boot.bin $(BUILD)/kernel.bin
 	@echo "built $@"
 
 run: $(BUILD)/os.img
-	qemu-system-x86_64 -drive format=raw,file=$< -no-reboot -d int,cpu_reset -D $(BUILD)/qemu.log
+	qemu-system-x86_64 -drive format=raw,file=$< -no-reboot -serial stdio -d int,cpu_reset -D $(BUILD)/qemu.log
 
 # Starts paused and waits for a debugger on port 1234 (lldb: gdb-remote 1234)
 debug: $(BUILD)/os.img
-	qemu-system-x86_64 -drive format=raw,file=$< -no-reboot -s -S
+	qemu-system-x86_64 -drive format=raw,file=$< -no-reboot -serial stdio -s -S
 
 $(BUILD):
 	mkdir -p $@
