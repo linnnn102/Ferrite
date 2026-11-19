@@ -8,8 +8,21 @@ mod vga;
 
 use core::panic::PanicInfo;
 
+// The kernel's first instruction. Zeroes .bss, then jumps to kmain.
+core::arch::global_asm!(
+    ".section .text.entry, \"ax\"",
+    ".global _start",
+    "_start:",
+    "    cld",
+    "    lea rdi, [rip + __bss_start]",
+    "    lea rcx, [rip + __bss_end]",
+    "    sub rcx, rdi",
+    "    xor eax, eax",
+    "    rep stosb",
+    "    jmp kmain",
+);
+
 #[unsafe(no_mangle)]
-#[unsafe(link_section = ".text.entry")]
 pub extern "C" fn kmain() -> ! {
     *vga::WRITER.lock() = vga::Writer::at_cursor(vga::Color::White, vga::Color::Black);
     serial::SERIAL.lock().init();
