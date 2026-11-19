@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod idt;
 mod port;
 mod serial;
 mod spinlock;
@@ -33,6 +34,8 @@ pub extern "C" fn kmain() -> ! {
     ok("VGA text driver");
     ok("Serial port (COM1)");
     ok("Hardware cursor");
+    idt::load();
+    ok("IDT loaded");
 
     hlt_loop();
 }
