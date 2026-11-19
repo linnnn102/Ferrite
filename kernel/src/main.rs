@@ -21,11 +21,7 @@ pub extern "C" fn kmain() -> ! {
     ok("Serial port (COM1)");
     ok("Hardware cursor");
 
-    loop {
-        // SAFETY: `hlt` only pauses the CPU until the next interrupt arrives;
-        // it doesn't touch memory or registers.
-        unsafe { core::arch::asm!("hlt") }
-    }
+    hlt_loop();
 }
 
 /// Prints a boot status line: a green "[ OK ]" tag followed by `msg`,
@@ -42,6 +38,35 @@ fn ok(msg: &str) {
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+fn panic(info: &PanicInfo) -> ! {
+    // SAFETY: single CPU with interrupts off, so any holder of these locks is the
+    // code that panicked, and it never resumes to use the data again.
+    unsafe {
+        vga::WRITER.force_unlock();
+        serial::SERIAL.force_unlock();
+    }
+
+    vga::WRITER
+        .lock()
+        .set_color(vga::Color::LightRed, vga::Color::Black);
+    println!("KERNEL PANIC: {}", info.message());
+    if let Some(loc) = info.location() {
+        println!("  at {}:{}:{}", loc.file(), loc.line(), loc.column());
+    }
+
+    serial_println!("KERNEL PANIC: {}", info.message());
+    if let Some(loc) = info.location() {
+        serial_println!("  at {}:{}:{}", loc.file(), loc.line(), loc.column());
+    }
+
+    hlt_loop();
+}
+
+/// Halts the CPU forever.
+fn hlt_loop() -> ! {
+    loop {
+        // SAFETY: `hlt` only pauses the CPU until the next interrupt arrives;
+        // it doesn't touch memory or registers.
+        unsafe { core::arch::asm!("hlt") }
+    }
 }

@@ -33,6 +33,16 @@ impl<T> Spinlock<T> {
         }
         SpinlockGuard { lock: self }
     }
+
+    /// Releases the lock without a guard.
+    ///
+    /// # Safety
+    /// The current holder must never use the data again. On a single CPU with
+    /// interrupts off, that's true in the panic handler: the holder is the code
+    /// that panicked, and it won't resume.
+    pub unsafe fn force_unlock(&self) {
+        self.locked.store(false, Ordering::Release);
+    }
 }
 
 /// Proof that you hold the lock. Gives access to the data; unlocks when dropped.
