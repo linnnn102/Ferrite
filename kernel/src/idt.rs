@@ -61,7 +61,6 @@ impl Idt {
     }
 
     /// Sends interrupt `vector` to the code at address `handler`.
-    #[allow(dead_code)] // used in 4a-3
     pub fn set_handler(&mut self, vector: u8, handler: u64) {
         self.entries[vector as usize] = IdtEntry::new(handler);
     }
